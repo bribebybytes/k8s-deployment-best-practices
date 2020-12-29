@@ -1,0 +1,281 @@
+---
+apiVersion: v1
+data:
+  db_uname: YWRtaW4K
+  db_pwd: c2RmZWRmM2RzZnNkCg==
+  .env: |-
+    QVBQX1VOQU1FPWFkbWluCkFQUF9QV0Q9c202S1NXMTJPR00xckpjdUhSOEMKQVBQX0VYVF9FTkRQT0lOVD0iaHR0cHM6Ly9leHRlcm5hbGFwcC5leGFtcGxlLmNvbS9hcGkvdjEvYWRkIgo=
+kind: Secret
+metadata:
+  name: samples-http-secret
+  namespace: bribe-by-bytes
+type: Opaque
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: samples-http-cm
+  namespace: bribe-by-bytes
+data:
+  # property-like keys; each key maps to a simple value
+  cluster_region: "us-west-2"
+  app_version: "v1.3"
+  #
+  # file-like keys
+  app.properties: |
+    hello=world
+    foo=bar
+  user.properties: |
+    user1=abc
+    user2=xyz
+    isadmin=true
+---
+apiVersion: v1
+data:
+  # The below is just a dummy root cert. Do NOT use this for any of your
+  # actual workload deployments. Update to your actual certs.
+  cacert.crt: |-
+    -----BEGIN CERTIFICATE-----
+    MIIC1TCCAb2gAwIBAgIJAPY38p+Jxyn+MA0GCSqGSIb3DQEBBQUAMBoxGDAWBgNV
+    BAMTD3d3dy5leGFtcGxlLmNvbTAeFw0yMDEyMjcwNjMwMzlaFw0zMDEyMjUwNjMw
+    MzlaMBoxGDAWBgNVBAMTD3d3dy5leGFtcGxlLmNvbTCCASIwDQYJKoZIhvcNAQEB
+    BQADggEPADCCAQoCggEBANf3aK3aXUhhtXth0PJgmb4vmcdd5YQjmLdgfwXRQQou
+    yj9U+mZodkoD4ZIJCBvNRZXKevauAaRJ+YtxdalJESBr13k3ybPFLbCYb3Jb0iS1
+    m2V9c5Sh0VrB+NJuj+J2EVjisPHXYZYjCbHf1P9tirabwOzQ0WaOdaqoO43F0WQC
+    FZHW+x2etJPnQjHb+f/WSjhOMaCHsLEEIbjlZHj01bP7yHnGnJ3rwCghmhc2lml9
+    JbD3NloMg+qPARck3EwdSE0uujHR495FA8BUMF0uvrHWmAKom/XxcT0YirZWJ/ef
+    sZOTkLF4op2VbwavTRfPRCbuLhJV1SgP2Rx1kbcO7xUCAwEAAaMeMBwwGgYDVR0R
+    BBMwEYIPd3d3LmV4YW1wbGUuY29tMA0GCSqGSIb3DQEBBQUAA4IBAQDPP1DiSUds
+    8LR8hK7amJT1MUGlDT2iC8LtQVbvSO9VBPd5Z4U+uFYL4CiNR2FL43qokBvkQZM+
+    DHvZ1h5mMKPYS4d5mHu1MXwPx75sk/PsmV0/5kDK8u1gM7b7yCUcuSBZ+CKNEKHi
+    ZdesqaIRjRa4hY1AvdE4/3SzSIa5QKhhJiqH00t8A/hgLq6H8OxUOTtpaEpLdkpC
+    KtiJNNfXJlamCKHvgEWQqp3aSrsWulWKZJ4CScRBjDBi6Qwpz/bpXNQKaRnO8Bec
+    hnKdGIYh2N+SSFjjyqwwhfTHoI3HAGJRFdJ//N1hcjbBTMrtTdzngKXnmaxg+QH0
+    cDB/1doY92jT
+    -----END CERTIFICATE-----
+
+kind: ConfigMap
+metadata:
+  name: root-ca
+  namespace: bribe-by-bytes
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: samples-http
+  labels:
+    app: hellogo
+    namespace: bribe-by-bytes
+spec:
+  # High Availability
+  replicas: 3
+  selector:
+    matchLabels:
+      app: hellogo
+  template:
+    metadata:
+      labels:
+        app: hellogo
+    spec:
+      # Hardened Security
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 3000
+        fsGroup: 2000
+      # High Availability
+      # To know more refer:
+      # https://youtu.be/Q0F2vSfxLek
+      # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - hellogo
+            topologyKey: "kubernetes.io/hostname"    
+      volumes:
+        - name: rootca
+          configMap:
+            name: root-ca
+            items:
+              - key: cacert.crt
+                path: cacert.crt
+        - name: app-config
+          configMap:
+            name: samples-http-cm
+            items:
+            - key: app.properties
+              path: app.properties
+            - key: user.properties
+              path: user.properties
+        - name: app-env
+          secret:
+            secretName: samples-http-secret
+            items:
+            - key: .env
+              path: .env
+      containers:
+        - name: hellogo
+          image: bribebybytes/hellogo:1.0.0
+          # Hardened Security
+          imagePullPolicy: Always
+          # Graceful Shutdown minimizing request failures  
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh","-c","sleep 5"]
+          ports:
+          - name: hellogo
+            containerPort: 8080
+          # Setting Requests and Limits allows to use compute resources efficiently. 
+          # Tune them what is needed for your app, do NOT waste resources
+          # Requests - Min/guaranteed resource allocated to container. To set, stress test sending expected traffic in prod. 
+          # Ideally this allocation should be able to handle avg. traffic expected by your app
+          # Limits - Max/upper limit(Not allocated/blocked) upto which the container can utilize if it's in need of resource. 
+          # This value should account for any peak traffic your app may encounter
+          resources:
+            limits:
+              memory: "500Mi"
+              cpu: "200m"
+            requests:
+              memory: "100Mi"
+              cpu: "100m"
+          # Liveness and Readiness Probes
+          # high availability and resiliency    
+          # To know more refer: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+              httpHeaders:
+              - name: Custom-Header
+                value: Awesome
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+              - cat
+              - /usr/app/secrets/.env
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          # Define the environment variable
+            # Notice that the case is different here
+            # from the key name in the ConfigMap.
+          env:
+          - name: ENVVARS_PATH
+            value: /usr/app/secrets
+          # Set optional env variable to change timezone of a pod to your preferred timezone.   
+          - name: TZ
+            value: US/Pacific
+# Uncomment the following proxy env variable and update them as needed if you are on a private network and trying to connect
+#to an endpoint that is outside of the network (internet) via Proxy.       
+#          - name: http_proxy
+#            value: http://<user>:<password>@<ip_addr>:<port>
+#          - name: https_proxy
+#            value: http://<user>:<password>@<ip_addr>:<port>
+#          - name: no_proxy
+#            value: 198.18.0.0/15,10.0.0.0/8,.example.com,localhost,127.0.0.1,.cluster.local
+#          - name: HTTP_PROXY
+#            value: http://<user>:<password>@<ip_addr>:<port>
+#          - name: HTTPS_PROXY
+#            value: http://<user>:<password>@<ip_addr>:<port>
+#          - name: NO_PROXY
+#            value: 198.18.0.0/15,10.0.0.0/8,.example.com,localhost,127.0.0.1,.cluster.local
+#          - name: TZ
+#            value: US/Pacific   
+          - name: TKE_CLUSTER                               
+            valueFrom:
+              configMapKeyRef:
+                name: samples-http-cm         # The ConfigMap this value comes from.
+                key: cluster_region           # The key to fetch.
+          - name: APP_VERSION
+            valueFrom:
+              configMapKeyRef:
+                name: samples-http-cm
+                key: app_version
+          - name: DB_UNAME
+            valueFrom:
+              secretKeyRef:
+                name: samples-http-secret
+                key: db_uname
+          - name: DB_PWD
+            valueFrom:
+              secretKeyRef:
+                name: samples-http-secret
+                key: db_pwd                
+          volumeMounts:
+          - name: app-config
+            mountPath: "/config"
+            readOnly: true
+          - name: app-env
+            mountPath: "/usr/app/secrets"
+            readOnly: true
+          - name: rootca
+            mountPath: /etc/ssl/certs
+# Uncomment the following if you are pulling from a private container registry
+# and you need to pass the secret name containing registry credential            
+#     imagePullSecrets:
+#       - name: regcred
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: samples-http
+  namespace: bribe-by-bytes
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: hellogo
+# Uncomment to enable "LoadBalancer" type service if your k8s cluster is on public cloud
+# which supports external load balancers    
+#  type: LoadBalancer  
+---
+# Comment the "Ingress" block of spec if you have enabled "LoadBalancer" type service above.
+kind: Ingress
+apiVersion: extensions/v1beta1
+metadata:
+  name: samples-http
+  namespace: bribe-by-bytes
+  annotations:
+    # Update the ingress class to whatever your Ingress Controller class.
+    # Example here I am using "traefik" ingress controller. Yours could be Nginx Ingress controller
+    # or something else.
+    kubernetes.io/ingress.class: "traefik"
+spec:
+  # Uncomment the following when you have TLS enabled hostname
+  # tls:
+    # - hosts:
+        # - hello-bribe-by-bytes.example.com
+  rules:
+  # Uncomment following to specify hostname if you have DNS setup and have a hostname
+  # - host: hello-bribe-by-bytes.example.com
+  - http:
+      paths:
+        - path: /
+          backend:
+            serviceName: samples-http
+            servicePort: http
+---
+# High Availability
+# More details refer: 
+# https://youtu.be/LJrANopxPjo
+# https://kubernetes.io/docs/tasks/run-application/configure-pdb/ 
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: samples-http-pdb
+  namespace: bribe-by-bytes
+spec:
+  maxUnavailable: 33%
+  selector:
+    matchLabels:
+      app: hellogo
+---
