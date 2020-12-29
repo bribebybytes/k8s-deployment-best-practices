@@ -3,7 +3,7 @@ This repository contains Kubernetes spec that covers all the important elements 
 
 The spec covers some best practices addressing key areas such as high availability, security, resiliency.
 
-Feel free to contribute, comment if you feel something anything is a miss.
+Feel free to contribute, comment if you feel anything is a miss.
 
 ## Usage
 
