@@ -187,7 +187,7 @@ spec:
 #            value: 198.18.0.0/15,10.0.0.0/8,.example.com,localhost,127.0.0.1,.cluster.local
 #          - name: TZ
 #            value: US/Pacific   
-          - name: TKE_CLUSTER                               
+          - name: CLUSTER_REGION                               
             valueFrom:
               configMapKeyRef:
                 name: samples-http-cm         # The ConfigMap this value comes from.
